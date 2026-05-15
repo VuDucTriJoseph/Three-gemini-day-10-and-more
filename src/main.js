@@ -1,8 +1,14 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/Addons.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import GUI from "three/examples/jsm/libs/lil-gui.module.min.js";
+import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 
 const canvas = document.querySelector("#app");
 const scene = new THREE.Scene();
+const intersectableObjects = [];
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
 
 const sizes = {
   width: window.innerWidth,
@@ -25,15 +31,67 @@ renderer.setClearColor(0x111111);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+// Create loading manager
+const loadingOverlay = document.querySelector("#loading-overlay");
+const loadingManager = new THREE.LoadingManager();
+loadingManager.onStart = () => {
+  console.log("Loading started");
+  if (loadingOverlay) loadingOverlay.style.display = "flex";
+};
+loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
+  console.log(`Loading: ${itemsLoaded}/${itemsTotal}`);
+};
+loadingManager.onLoad = () => {
+  console.log("Loading complete");
+  if (loadingOverlay) loadingOverlay.style.display = "none";
+};
+loadingManager.onError = (url) => {
+  console.error(`Error loading: ${url}`);
+  if (loadingOverlay) loadingOverlay.style.display = "none";
+};
+
+// Load HDR environment map
+const rgbeLoader = new RGBELoader(loadingManager);
+rgbeLoader.load("/christmas_photo_studio_04_1k.hdr", (texture) => {
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+  pmremGenerator.dispose();
+
+  scene.environment = envMap;
+});
+
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
+
+// GLTF Loader
+const gltfLoader = new GLTFLoader(loadingManager);
+
+// load and traverse
+
+gltfLoader.load("/lubricant_spray_1k.gltf/lubricant_spray_1k.gltf", (gltf) => {
+  const model = gltf.scene;
+
+  //scan all parts of model
+  model.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      intersectableObjects.push(child);
+    }
+  });
+  model.scale.set(10, 10, 10);
+  model.position.y = 0.1;
+  scene.add(model);
+});
 
 const geometry = new THREE.BoxGeometry(1, 1, 1);
 const material = new THREE.MeshStandardMaterial({ color: 0x44aaff });
 const cube = new THREE.Mesh(geometry, material);
 cube.position.y = 0.6;
+cube.position.x = 3;
 cube.castShadow = true;
 scene.add(cube);
+intersectableObjects.push(cube);
 
 const planeGeometry = new THREE.PlaneGeometry(10, 10);
 const planeMaterial = new THREE.MeshStandardMaterial({
@@ -59,6 +117,33 @@ scene.add(pointLight);
 const pointLightHelper = new THREE.PointLightHelper(pointLight, 0.2, 0xff0000);
 scene.add(pointLightHelper);
 
+// Create GUI
+const gui = new GUI();
+// Cube controls
+const cubeFolder = gui.addFolder("Cube");
+cubeFolder.add(cube.position, "x", -10, 10, 0.1);
+cubeFolder.add(cube.position, "y", -10, 10, 0.1);
+cubeFolder.add(cube.position, "z", -10, 10, 0.1);
+cubeFolder.add(cube.rotation, "x", 0, Math.PI * 2, 0.01);
+cubeFolder.add(cube.rotation, "y", 0, Math.PI * 2, 0.01);
+cubeFolder.add(cube.rotation, "z", 0, Math.PI * 2, 0.01);
+
+// PointLight controls
+const lightFolder = gui.addFolder("PointLight");
+lightFolder.add(pointLight.position, "x", -10, 10, 0.1);
+lightFolder.add(pointLight.position, "y", -10, 10, 0.1);
+lightFolder.add(pointLight.position, "z", -10, 10, 0.1);
+lightFolder.add(pointLight, "intensity", 0, 3, 0.1);
+lightFolder
+  .addColor({ color: pointLight.color.getHex() }, "color")
+  .onChange((value) => {
+    pointLight.color.setHex(value);
+  });
+
+intersectableObjects.forEach((obj) => {
+  obj.userData.isHovered = false;
+});
+
 window.addEventListener("resize", () => {
   sizes.width = window.innerWidth;
   sizes.height = window.innerHeight;
@@ -70,10 +155,22 @@ window.addEventListener("resize", () => {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 });
 
-const tick = () => {
+window.addEventListener("pointermove", (event) => {
+  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+});
+
+const animate = () => {
+  raycaster.setFromCamera(pointer, camera);
+  const intersects = raycaster.intersectObjects(intersectableObjects, true);
+
+  if (intersects.length > 0) {
+    // Example: log the first hit object
+    // console.log("Ray hit:", intersects[0].object);
+  }
   controls.update();
   renderer.render(scene, camera);
-  requestAnimationFrame(tick);
+  requestAnimationFrame(animate);
 };
 
-tick();
+animate();
