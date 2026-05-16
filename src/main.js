@@ -76,12 +76,46 @@ gltfLoader.load("/lubricant_spray_1k.gltf/lubricant_spray_1k.gltf", (gltf) => {
     if (child.isMesh) {
       child.castShadow = true;
       child.receiveShadow = true;
-      intersectableObjects.push(child);
+      // intersectableObjects.push(child);
+      // console.log("Finded part: ", child.name, "- Type:", child.type);
     }
   });
+
+  // create a proxy as children of model , proxy is the present of model on intersectableObject. it will help the raycaster use less memory
+  // 1. caculte size and position of proxy
+  const bbox = new THREE.Box3().setFromObject(model);
+  const size = bbox.getSize(new THREE.Vector3());
+  const center = bbox.getCenter(new THREE.Vector3());
+
+  //2. create proxy mesh
+  const proxyGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+  // console.log(proxyGeo);
+  const proxyMat = new THREE.MeshBasicMaterial({
+    wireframe: true,
+    visible: false,
+  });
+  // console.log(proxyMat);
+
+  const proxy = new THREE.Mesh(proxyGeo, proxyMat);
+
+  //3. IMPORTANT : Get proxy as a child of model
+  // change position of proxy to position of model
+  proxy.position.copy(model.worldToLocal(center));
+
+  model.add(proxy);
+
   model.scale.set(10, 10, 10);
   model.position.y = 0.1;
   scene.add(model);
+
+  // 4. add info to ident on Raycaster
+  proxy.userData.isProxy = true;
+  proxy.userData.parentModel = model;
+
+  // 5. push proxy into intersectableObject list
+  intersectableObjects.push(proxy);
+
+  console.log("present guy is ready");
 });
 
 const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -162,12 +196,28 @@ window.addEventListener("pointermove", (event) => {
 
 const animate = () => {
   raycaster.setFromCamera(pointer, camera);
-  const intersects = raycaster.intersectObjects(intersectableObjects, true);
+
+  intersectableObjects.forEach((obj) => {
+    obj.userData.isHovered = false;
+  });
+  const intersects = raycaster.intersectObjects(intersectableObjects);
 
   if (intersects.length > 0) {
     // Example: log the first hit object
     // console.log("Ray hit:", intersects[0].object);
+    const hit = intersects[0].object;
+    hit.userData.isHovered = true;
+
+    const parent = hit.userData.parentModel ? hit.userData.parentModel : hit;
+    parent.rotation.y += 0.05;
   }
+
+  intersectableObjects.forEach((obj) => {
+    const realObj = obj.userData.parentModel ? obj.userData.parentModel : obj;
+    if (!obj.userData.isHovered) {
+      realObj.rotation.y += (0 - realObj.rotation.y) * 0.1;
+    }
+  });
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
