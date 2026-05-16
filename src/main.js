@@ -87,6 +87,25 @@ gltfLoader.load("/lubricant_spray_1k.gltf/lubricant_spray_1k.gltf", (gltf) => {
   const size = bbox.getSize(new THREE.Vector3());
   const center = bbox.getCenter(new THREE.Vector3());
 
+  const nozzleLocalPos = new THREE.Vector3(
+    center.x,
+    bbox.max.y - size.y * 0.05,
+    bbox.max.z - size.z * 0.05,
+  );
+
+  const nozzleAnchor = new THREE.Object3D();
+  nozzleAnchor.position.copy(nozzleLocalPos);
+  model.add(nozzleAnchor);
+
+  model.userData.nozzle = nozzleAnchor;
+
+  // const debugNozzleMesh = new THREE.Mesh(
+  //   new THREE.SphereGeometry(0.02, 8, 8),
+  //   new THREE.MeshBasicMaterial({ color: 0xff0000 }),
+  // );
+
+  // nozzleAnchor.add(debugNozzleMesh);
+
   //2. create proxy mesh
   const proxyGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
   // console.log(proxyGeo);
@@ -194,6 +213,81 @@ window.addEventListener("pointermove", (event) => {
   pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
 });
 
+// cau hinh so luong hat
+const particleCount = 200;
+const particleGeometry = new THREE.BufferGeometry();
+const positions = new Float32Array(particleCount * 3);
+const velocities = [];
+
+//Khoi tao vi tri ban dau mac dinh(bang 0 het) va tao luc day ngau nhien
+for (let i; i < particleCount; i++) {
+  positions[i * 3] = 0;
+  positions[i * 3 + 1] = 0;
+  positions[i * 3 + 2] = 0;
+
+  // tao huong bay ngau nhien
+  velocities.push(
+    new THREE.Vector3(
+      0.5 + Math.random() * 1,
+      (Math.random() - 0.5) * 0.3,
+      (Math.random() - 0.5) * 0.3,
+    ),
+  );
+}
+
+particleGeometry.setAttribute(
+  "position",
+  new THREE.BufferAttribute(positions, 3),
+);
+
+const particleMaterial = new THREE.PointsMaterial({
+  color: 0xcccccc,
+  size: 0.05,
+  transparent: true,
+  opacity: 0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+
+const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+scene.add(particleSystem);
+
+let isSpraying = false;
+let sprayTimer = 0;
+
+window.addEventListener("click", () => {
+  raycaster.setFromCamera(pointer, camera);
+
+  const intersects = raycaster.intersectObjects(intersectableObjects);
+
+  if (intersects.length > 0) {
+    const clickedObject = intersects[0].object;
+
+    console.log(clickedObject);
+
+    if (clickedObject.userData.isProxy) {
+      pointLight.color.set("#f43535");
+
+      isSpraying = true;
+      sprayTimer = 0;
+
+      particleMaterial.opacity = 0.8;
+
+      const positionAttribute = particleGeometry.attributes.position;
+
+      for (let i; i < particleCount; i++) {
+        positionAttribute.setXYZ(
+          i,
+          model.position.x,
+          model.position.y + 0.8,
+          model.position.z,
+        );
+      }
+      positionAttribute.needsUpdate = true;
+    }
+  }
+});
+
 const animate = () => {
   raycaster.setFromCamera(pointer, camera);
 
@@ -218,6 +312,30 @@ const animate = () => {
       realObj.rotation.y += (0 - realObj.rotation.y) * 0.1;
     }
   });
+
+  if (isSpraying) {
+    const positionAttribute = particleGeometry.attributes.position;
+    sprayTimer += 0.016;
+
+    for (let i = 0; i < particleCount; i++) {
+      let x = positionAttribute.getX(i);
+      let y = positionAttribute.getY(i);
+      let z = positionAttribute.getZ(i);
+
+      x += velocities[i].x * 0.1;
+      y += velocities[i].y * 0.1;
+      z += velocities[i].z * 0.1;
+
+      positionAttribute.setXYZ(i, x, y, z);
+    }
+    positionAttribute.needsUpdate = true;
+
+    particleMaterial.opacity -= 0.015;
+    if (particleMaterial.opacity <= 0) {
+      isSpraying = false;
+    }
+  }
+
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
