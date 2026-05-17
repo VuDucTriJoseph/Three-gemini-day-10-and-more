@@ -220,7 +220,7 @@ const positions = new Float32Array(particleCount * 3);
 const velocities = [];
 
 //Khoi tao vi tri ban dau mac dinh(bang 0 het) va tao luc day ngau nhien
-for (let i; i < particleCount; i++) {
+for (let i = 0; i < particleCount; i++) {
   positions[i * 3] = 0;
   positions[i * 3 + 1] = 0;
   positions[i * 3 + 2] = 0;
@@ -263,7 +263,9 @@ window.addEventListener("click", () => {
   if (intersects.length > 0) {
     const clickedObject = intersects[0].object;
 
-    console.log(clickedObject);
+    // console.log(clickedObject);
+    const model = clickedObject.userData.parentModel;
+    model.userData.nozzle.getWorldPosition(currentNozzlePos);
 
     if (clickedObject.userData.isProxy) {
       pointLight.color.set("#f43535");
@@ -275,7 +277,7 @@ window.addEventListener("click", () => {
 
       const positionAttribute = particleGeometry.attributes.position;
 
-      for (let i; i < particleCount; i++) {
+      for (let i = 0; i < particleCount; i++) {
         positionAttribute.setXYZ(
           i,
           model.position.x,
